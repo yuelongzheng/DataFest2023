@@ -1,0 +1,304 @@
+---
+title: "DataFest 2023"
+author: "Yue Long Zheng"
+date: "2023-04-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+attorneys<-read_csv("data/attorneys.csv")
+timeenteries<-read_csv("data/attorneytimeentries.csv")
+categories<-read_csv("data/categories.csv")
+clients<-read_csv("data/clients.csv")
+questposts<-read_csv("data/questionposts.csv")
+questions<-read_csv("data/questions.csv")
+statesites<-read_csv("data/statesites.csv")
+subcategories<-read_csv("data/subcategories.csv")
+```
+```{r}
+head(attorneys)
+head(categories)
+head(clients)
+head(questions)
+head(questposts)
+head(statesites)
+head(subcategories)
+head(timeenteries)
+```
+
+```{r}
+head(clients)
+head(questions)
+clients_questions = left_join(questions ,clients, by = c("AskedByClientUno" = "ClientUno"))
+head(clients_questions)
+```
+```{r Count of Categories not taken by lawyers }
+not_taken = filter(clients_questions, TakenByAttorneyUno == "NULL")
+not_taken
+p1<-ggplot(not_taken, aes(x = Category)) + geom_bar() + theme_bw() + theme(axis.text.x = element_text(angle = 90))
+p1
+```
+
+```{r Count of categories taken by lawyers }
+taken = filter(clients_questions, TakenByAttorneyUno != "NULL")
+p2<-ggplot(taken, aes(x = Category)) + geom_bar() + theme_bw() + theme(axis.text.x = element_text(angle = 90))
+p2
+```
+
+```{r America Graph}
+library(geofacet)
+clients_questions %>%
+    mutate(TakenByAttorney = recode(TakenByAttorneyUno, 
+                                    "NULL" = "False",
+                                    .default = "True"
+                             )
+           ) ->
+    clients_questions
+
+p3 <-ggplot(clients_questions, aes(x = Category))+ geom_bar(aes(fill = TakenByAttorney )) + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+p3 + facet_geo(~StateAbbr.x)
+```
+
+
+```{r Ethnic Identity Count}
+distinct(clients, EthnicIdentity)
+count(clients, EthnicIdentity, sort = TRUE)
+```
+
+```{r Split Ethnic Identity result}
+EthnicIdentity <- clients$EthnicIdentity
+#str_split(str_replace_all(EthnicIdentity, ",|or|/", " "), " ")
+
+#sum(str_count(EthnicIdentity, "Caucasian"), na.rm = TRUE)
+#sum(str_count(EthnicIdentity, "Native American"))
+
+a = str_split(EthnicIdentity, ",|or|/", simplify = TRUE)
+b = as.data.frame(a)
+trim_string <- function(x, na.rm = FALSE) (str_trim(x))
+b = mutate_all(b, trim_string)
+counts = bind_rows(b %>% count(V1), rename(b %>% count(V2), V1 = V2))
+counts = bind_rows(counts, rename(b %>% count(V3), V1 = V3))
+counts = bind_rows(counts, rename(b %>% count(V4), V1 = V4))
+counts = bind_rows(counts, rename(b %>% count(V5), V1 = V5))
+counts = bind_rows(counts, rename(b %>% count(V6), V1 = V6))
+counts = bind_rows(counts, rename(b %>% count(V7), V1 = V7))
+counts = bind_rows(counts, rename(b %>% count(V8), V1 = V8))
+counts = bind_rows(counts, rename(b %>% count(V9), V1 = V9))
+counts = bind_rows(counts, rename(b %>% count(V10), V1 = V10))
+counts = bind_rows(counts, rename(b %>% count(V11), V1 = V11))
+counts = bind_rows(counts, rename(b %>% count(V12), V1 = V12))
+counts = bind_rows(counts, rename(b %>% count(V13), V1 = V13))
+counts = bind_rows(counts, rename(b %>% count(V14), V1 = V14))
+counts = rename(counts, Ethnic_Identity = V1)
+counts = counts %>% group_by(Ethnic_Identity) %>% summarise(count = sum(n))
+counts
+```
+
+```{r Hours taken to respond}
+head(questions)
+asked_and_taken_time = data.frame(questions$AskedOnUtc, questions$TakenOnUtc, questions$Category)
+asked_and_taken_time
+remove_null = filter(asked_and_taken_time, questions.TakenOnUtc != "NULL")
+remove_null = mutate(remove_null, TakenOnUtc =  as.POSIXct(remove_null$questions.TakenOnUtc, tz = "UTC"))
+remove_null = mutate(remove_null, TimeTaken = interval(remove_null$questions.AskedOnUtc, remove_null$TakenOnUtc) %/% hours(1))
+#none = filter(df, questions.AskedOnUtc != "NULL")
+```
+```{r Hours taken histogram}
+p5 <- ggplot(remove_null, aes(x = TimeTaken)) + geom_histogram() + facet_wrap(~questions.Category, scales = "free")
+p5
+```
+
+```{r Hours taken to close }
+closure_time = data.frame(questions$AskedOnUtc, questions$ClosedOnUtc, questions$Category)
+closure_time
+closure_time = filter(closure_time, questions.ClosedOnUtc != "NULL")
+closure_time = mutate(closure_time, ClosedOnUtc = as.POSIXct(closure_time$questions.ClosedOnUtc, tz = "UTC"))
+closure_time = mutate(closure_time, TimeTaken = interval(closure_time$questions.AskedOnUtc, closure_time$ClosedOnUtc) %/% hours(1))
+```
+
+```{r Hours taken to close by category}
+p6 <- ggplot(closure_time, aes(x = TimeTaken)) + geom_histogram() + facet_wrap(~questions.Category, scales = "free")
+p6
+```
+
+```{r Monthly and Yearly Trends}
+question_category = data.frame(questions$AskedOnUtc, questions$Category)
+question_category = mutate(question_category, YearAsked = 
+                             year(question_category$questions.AskedOnUtc))
+question_category = mutate(question_category, MonthAsked = 
+                              month(question_category$questions.AskedOnUtc))
+p7 <- ggplot(question_category, aes(x = YearAsked)) + geom_bar() + facet_wrap(~questions.Category, scales = "free") + theme(axis.text.x = element_text(angle = 90))
+p7
+Months <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+p8 <- ggplot(question_category, aes(x = MonthAsked, fill = as.factor(YearAsked))) + geom_bar() + facet_wrap(~questions.Category, scales = "free") + scale_x_continuous(breaks = c(1:12), labels = Months) + theme(axis.text.x = element_text(angle = 90)) + guides(fill=guide_legend(title="Year"))
+p8
+```
+```{r}
+Questions_Asked_When = question_category %>%
+  count(questions.Category, MonthAsked, YearAsked)
+p9 <- ggplot(Questions_Asked_When, aes(x = MonthAsked, y = n, color = as.factor(YearAsked))) + geom_line() + scale_x_continuous(breaks = c(1:12), labels = Months)+ theme(axis.text.x = element_text(angle = 90)) + facet_wrap(~questions.Category, scale = "free_y")  + guides(color=guide_legend(title="Year"))
+p9
+```
+
+```{r Education Questions by state, month and year}
+Education_Questions <- data.frame(questions$QuestionUno, questions$StateAbbr ,questions$Category, questions$AskedOnUtc)
+
+Education_Questions = Education_Questions %>%
+  rename(., QuestionUno = questions.QuestionUno) %>%
+  rename(., StateAbbr = questions.StateAbbr) %>%
+  rename(., Category =  questions.Category) %>%
+  rename(., AskedOnUtc = questions.AskedOnUtc)
+
+Education_Questions = Education_Questions%>% 
+  filter(., Category == "Education")
+
+Education_Questions = Education_Questions %>%
+  mutate(., YearAsked = year(AskedOnUtc)) %>%
+  mutate(., MonthAsked = month(AskedOnUtc)) %>% 
+  select(-AskedOnUtc)
+
+Education_Questions_Count = Education_Questions %>%
+  count(StateAbbr, YearAsked, MonthAsked)
+```
+
+```{r Plot of Education Questions Asked by state, month and year}
+p10 <- ggplot(Education_Questions_Count, aes(x = MonthAsked, y = n , color = as.factor(YearAsked))) + geom_line() + scale_x_continuous(breaks = c(1:12), labels = Months)+ theme(axis.text.x = element_text(angle = 90)) +
+facet_wrap(~StateAbbr, scale = "free_y")  + guides(color=guide_legend(title="Year"))
+p10
+```
+
+```{r Juvenile Questions by state, month and year}
+Juvenile_Questions <- data.frame(questions$QuestionUno, questions$StateAbbr ,questions$Category, questions$AskedOnUtc)
+
+Juvenile_Questions = Juvenile_Questions %>%
+  rename(., QuestionUno = questions.QuestionUno) %>%
+  rename(., StateAbbr = questions.StateAbbr) %>%
+  rename(., Category =  questions.Category) %>%
+  rename(., AskedOnUtc = questions.AskedOnUtc)
+
+Juvenile_Questions = Juvenile_Questions%>% 
+  filter(., Category == "Juvenile")
+
+Juvenile_Questions = Juvenile_Questions %>%
+  mutate(., YearAsked = year(AskedOnUtc)) %>%
+  mutate(., MonthAsked = month(AskedOnUtc)) %>% 
+  select(-AskedOnUtc)
+
+Juvenile_Questions_Count = Juvenile_Questions %>%
+  count(StateAbbr, YearAsked, MonthAsked)
+```
+
+
+```{r Plot of Juvenile Questions Asked by state, month and year}
+p11 <- ggplot(Juvenile_Questions_Count, aes(x = MonthAsked, y = n , color = as.factor(YearAsked))) + geom_line() + scale_x_continuous(breaks = c(1:12), labels = Months)+ theme(axis.text.x = element_text(angle = 90)) +
+facet_wrap(~StateAbbr, scale = "free_y") + guides(color=guide_legend(title="Year"))
+p11
+```
+
+```{r Counting Number of Juvenile Questions}
+count(filter(questions, Category == "Juvenile"), Category)
+```
+
+
+```{r}
+question_text = data.frame(questposts$QuestionUno, questposts$PostText)
+question_text = question_text %>%
+  rename(., QuestionUno = questposts.QuestionUno) %>%
+  rename(., PostText = questposts.PostText)
+question_and_category = data.frame(questions$QuestionUno, questions$Category)
+question_and_category = question_and_category %>%
+  rename(., QuestionUno = questions.QuestionUno) %>%
+  rename(., Category = questions.Category)
+post_and_cateogry = left_join(question_text, question_and_category, by = c("QuestionUno" = "QuestionUno"))
+
+library(tidytext)
+question_words <- post_and_cateogry %>% unnest_tokens(word, PostText) %>% count(Category, word, sort = TRUE)
+# total word count in questions by category
+total_words <- question_words %>% group_by(Category) %>% summarize(total = sum(n))
+question_words <- left_join(question_words, total_words)
+question_words
+```
+
+```{r Term Frequency Histogram}
+ggplot(question_words, aes(n/total, fill = Category)) + 
+  geom_histogram(show.legend = FALSE, bins = 40) +
+  facet_wrap(~Category, ncol = 2, scales = "free_y")
+
+# There are a lot of unique words that appear in each category, that is why the histogram is right skewed. 
+```
+
+```{r tf-idf}
+question_words <- question_words %>%
+  bind_tf_idf(word, Category, n)
+question_words
+```
+
+```{r}
+question_words %>%
+  filter(Category == "Juvenile") %>%
+  select(-total) %>%
+  arrange(desc(tf_idf)) 
+```
+```{r}
+question_words %>%
+  filter(., word == "voluntarily")
+```
+
+```{r}
+juvenile_questions  = post_and_cateogry %>%
+  filter(., Category == "Juvenile")
+
+juvenile_question_words <- juvenile_questions %>% unnest_tokens(word, PostText) %>% count(QuestionUno, word, sort = TRUE)
+juvenile_total_words <- juvenile_question_words %>% group_by(QuestionUno) %>% summarize(total = sum(n))
+juvenile_question_words <- left_join(juvenile_question_words, juvenile_total_words)
+juvenile_question_words
+```
+
+```{r}
+juvenile_question_words <- juvenile_question_words %>%
+  bind_tf_idf(word, QuestionUno, n)
+# select(-total) deletes the total column
+juvenile_question_words <- juvenile_question_words %>%
+  select(-total) %>%
+  arrange(desc(tf_idf))
+```
+
+
+```{r Education Categories Asked}
+Education_Category = categories %>% 
+  filter(., Category == "Education")
+Education_Category = left_join(subcategories, Education_Category, by = c("CategoryUno" = "CategoryUno"))
+Education_Category = Education_Category %>%
+  filter(., Category != "NULL")
+unique(Education_Category$Subcategory)
+```
+
+```{r}
+SpecialEducation <- c("Special Education", "Special Education (IEPs, 504 Plans, Behavioral Intervention Plans)", "Special Education/Learning Disabilities"  )
+```
+
+
+```{r Education Subcategories in October}
+Time_Education_Questions = questions %>% 
+  filter(., Category == "Education") %>%
+  mutate(., YearAsked = year(AskedOnUtc)) %>% 
+  mutate(., MonthAsked = month(AskedOnUtc))
+
+Time_Education_Questions %>%
+  filter(., MonthAsked == 10) %>%
+  count(Subcategory)
+```
+
+```{r}
+Time_Education_Questions %>%
+  filter(., MonthAsked == 10)
+```
+
+
+
+

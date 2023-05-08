@@ -1,0 +1,12 @@
+primary:
+- find peak times by category
+   - plot of x=month, y=caseCount, facet=category
+   - plot of x=month, y=responsetime, facet=category
+- find important categories
+   - plot 
+
+secondary:
+- to demonstrate what creates the peak
+
+conclude:
+- hire more people in this area at this time

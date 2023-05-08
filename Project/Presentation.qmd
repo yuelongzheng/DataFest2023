@@ -1,0 +1,358 @@
+---
+title: "DataFest 2023"
+author: "ThreeCurlsAndAGuy"
+format: 
+  revealjs:
+    self-contained: true
+editor: visual
+---
+
+## Overview
+
+**Aim:** Determine how to target recruitment to improve efficiency.
+
+-   Measure efficiency.
+
+-   Decide on time and expertise focus
+
+**Finding:** Target education experts mid-year due to back-to-school case surge
+
+::: notes
+
+* Assist program --> efficient resource use
+
+* Looked at key areas of inefficiency
+
+* Measured efficiency w/ closure/response time
+
+* Action was recruitment expertise / time
+
+* Found: education inefficient at back-to-school
+
+* Solution: target education experts during this period
+
+:::
+
+## Peak times over the year
+
+```{r Setup}
+#Set global chunk options
+knitr::opts_chunk$set(
+  cache = TRUE
+)
+#Load packages
+library(tidyverse)
+library(patchwork)
+library(sylcount)
+library(lubridate)
+library(syuzhet)
+library(tidytext)
+library(tidyr)
+
+#Read data
+questionposts <- read_csv("Data/questionposts.csv")
+questions <- read_csv(here::here("Data", "questions.csv"), na = "NULL")
+categories <- read_csv(here::here("Data", "categories.csv"))
+subcategories <- read_csv(here::here("Data", "subcategories.csv"))
+
+#Record months vector
+Months <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+#Clean questionposts data
+questionposts <- questionposts %>%
+  #Get rid of incorrectly expanded columns
+  select(
+    Id:CreatedUtc
+  ) %>%
+  #Trim out questionposts items where state abbreviation isn't 2 characters
+  filter(str_length(StateAbbr) == 2) %>%
+    #Reformat Id as number
+  mutate(
+    Id = as.numeric(Id)
+  )
+```
+
+```{r CalculateEfficiency}
+questions <- questions %>%
+  mutate(
+    #Calculate times
+    ResponseTime = int_length(interval(ymd_hms(AskedOnUtc), ymd_hms(TakenOnUtc)))/3600,
+    ClosureTime = int_length(interval(ymd_hms(TakenOnUtc), ymd_hms(ClosedOnUtc)))/3600,
+    Urgency = 1 / int_length(interval(ymd_hms(AskedOnUtc), ymd_hms(LegalDeadline)))/3600,
+    Urgency = ifelse(Urgency < 0, NA, Urgency),
+    #Calculate when 
+    YearAsked = year(AskedOnUtc),
+    MonthAsked = month(AskedOnUtc)
+  )
+```
+
+```{r PeakTimes}
+pPeakTimes <- questions %>%
+  #Get count of cases in each month & year
+  count(Category, MonthAsked, YearAsked) %>%
+  filter(YearAsked != 2022) %>%
+  #Plot
+  ggplot(aes(x = MonthAsked, y = n, color = as.factor(YearAsked))) + 
+  geom_point() + 
+  geom_smooth(se = FALSE) + 
+  facet_wrap(~Category, scale = "free_y")  + 
+  #Format
+  scale_x_continuous(breaks = c(1:12), labels = Months)+ 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  guides(color=guide_legend(title="Year"))
+
+pPeakTimes
+```
+
+::: notes
+
+-   Introduce graph: Case count across the year per category
+
+-   Point out: Surge during back to school season for education and juvenile
+
+-   This led us to investigate how well this surge was being handled
+
+-   We will now demonstrate the inefficiency and discuss solutions
+
+:::
+
+# Surge in education
+
+## Affect of surge on education response time
+
+```{r EduResponseByMonth}
+pEduResponseByMonth <- questions %>%
+  #Get mean response time by month, just for education
+  group_by(MonthAsked, Category) %>% 
+  summarise(ResponseTimeAvg = mean(ResponseTime, na.rm = TRUE)) %>% 
+  filter(Category == "Education") %>%
+  #Plot
+  ggplot(aes(x = MonthAsked, y = ResponseTimeAvg)) + 
+  geom_col() +
+  #Format
+  scale_x_continuous(breaks = c(1:12), labels = Months) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  guides(fill = guide_legend(title = "Year"))
+
+pEduResponseByMonth
+```
+
+::: notes
+-   Response time - before the lawyer takes up a case
+-   Response time increases at back to school season
+:::
+
+## Affect of surge on education closure time
+
+```{r EduClosureByMonth}
+pEduClosureByMonth <- questions %>% 
+  #Get mean closure time by month, just for education
+  group_by(MonthAsked, Category) %>% 
+  summarise(ClosureTimeAvg = mean(ClosureTime, na.rm = TRUE)) %>%
+  filter(Category == "Education") %>%
+  ggplot(aes(x = MonthAsked, y = ClosureTimeAvg)) + 
+  geom_col() + 
+  #Format
+  scale_x_continuous(breaks = c(1:12), labels = Months) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  guides(fill = guide_legend(title = "Year"))
+
+pEduClosureByMonth
+```
+
+::: notes
+-   Closure time - time lawyer takes up to finish a case
+-   Closure time increases at back to school season
+
+-   Very large peak that take up longer time to finish a case
+:::
+
+# Flow on effect of education case surge
+
+## Surge effect on response time
+
+```{r AllCatsResponseByMonth}
+p3 <- questions %>% 
+  group_by(MonthAsked, Category) %>% 
+  summarise(ResponseTimeAvg = mean(ResponseTime, na.rm = TRUE)) %>% 
+  ggplot(aes(x = MonthAsked, y = ResponseTimeAvg)) + 
+  geom_col() + 
+  facet_wrap(~Category, scales = "free") +
+  #Format
+  scale_x_continuous(breaks = c(1:12), labels = Months) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  guides(fill = guide_legend(title = "Year"))
+
+p3
+```
+
+::: notes
+-   Similar placement of peak in response time increase for juvenile cases
+-   Fall and rise in average response time across the board 
+-   Mid-year
+-   Particularly Work, Employment, Juvenile, Housing
+:::
+
+## Surge effect on closure time
+
+```{r AllCatsClosureByMonth}
+p2 <- questions %>% 
+  group_by(MonthAsked, Category) %>% 
+  summarise(ClosureTimeAvg = mean(ClosureTime, na.rm = TRUE)) %>% 
+  ggplot(aes(x = MonthAsked, y = ClosureTimeAvg)) + 
+  geom_col() + 
+  facet_wrap(~Category, scales = "free") +
+  #Format
+  scale_x_continuous(breaks = c(1:12), labels = Months) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  guides(fill = guide_legend(title = "Year"))
+
+p2
+```
+
+::: notes
+
+-   Increase in response time effects closure rates
+
+-   Can be seen in Individual rights and others
+
+-   Therefore a backlog
+:::
+
+# Specific surge areas
+
+## Subcategories of education
+
+```{r EduSubcategories}
+Time_Education_Questions <- questions %>% 
+  filter(Category == "Education") %>%
+  mutate(YearAsked = year(AskedOnUtc)) %>% 
+  mutate(MonthAsked = month(AskedOnUtc, label = TRUE))
+
+Time_Education_Questions$Subcategory <- ifelse(Time_Education_Questions$Subcategory == "Education/School Discipline/Special Education" |
+                                                 Time_Education_Questions$Subcategory == "Special Education" |
+                                                 Time_Education_Questions$Subcategory == "School or Special Education" |
+                                                 Time_Education_Questions$Subcategory == "Special Education (IEPs, 504 Plans, Behavioral Intervention Plans)" |
+                                                 Time_Education_Questions$Subcategory == "Special Education/Learning Disabilities", "Special Education",  Time_Education_Questions$Subcategory)
+Time_Education_Questions$Subcategory <- ifelse(Time_Education_Questions$Subcategory == "Education" |
+                                                 Time_Education_Questions$Subcategory == "Education Law Cases" |
+                                                 Time_Education_Questions$Subcategory == "School/Education" |
+                                                 Time_Education_Questions$Subcategory == "School/Juvenile", "School/Education",  Time_Education_Questions$Subcategory)
+Time_Education_Questions$Subcategory <- ifelse(Time_Education_Questions$Subcategory == "School Discipline" |
+                                                 Time_Education_Questions$Subcategory == "School Discipline (Short-term suspensions, Long-term suspensions, Expulsions)" |
+                                                 Time_Education_Questions$Subcategory == "School Discipline (including Expulsion and Suspension)", "School Discipline",  Time_Education_Questions$Subcategory)
+
+Edu_Subcats <- Time_Education_Questions %>%
+  group_by(MonthAsked) %>%
+  count(Subcategory)
+
+p5 <- ggplot(Edu_Subcats, aes(x = MonthAsked, y = n)) +
+  geom_col(aes(fill = MonthAsked)) +
+  facet_wrap(~Subcategory)
+
+p5
+# Time_Education_Questions <- questions %>% 
+#   filter(Category == "Education") %>%
+#   mutate(YearAsked = year(AskedOnUtc)) %>% 
+#   mutate(MonthAsked = month(AskedOnUtc, label = TRUE))
+# 
+# Time_Education_Questions$Subcategory <- ifelse(
+#   Time_Education_Questions$Subcategory == "Education/School Discipline/Special Education" |
+#     Time_Education_Questions$Subcategory == "Special Education" |
+#     Time_Education_Questions$Subcategory == "Special Education (IEPs, 504 Plans, Behavioral Intervention Plans)" |
+#     Time_Education_Questions$Subcategory == "Special Education/Learning Disabilities", 
+#   "Special Education",  
+#   Time_Education_Questions$Subcategory
+#   )
+# 
+# Time_Education_Questions$Subcategory <- ifelse(
+#   Time_Education_Questions$Subcategory == "Education" | 
+#     Time_Education_Questions$Subcategory == "Education Law Cases" | 
+#     Time_Education_Questions$Subcategory == "School or Special Education" |
+#     Time_Education_Questions$Subcategory == "School/Education" |
+#     Time_Education_Questions$Subcategory == "School/Juvenile", 
+#   "School/Education/SpecialEd",
+#   Time_Education_Questions$Subcategory
+#   )
+# 
+# Time_Education_Questions$Subcategory <- ifelse(
+#   Time_Education_Questions$Subcategory == "School Discipline" |
+#     Time_Education_Questions$Subcategory == "School Discipline (Short-term suspensions, Long-term suspensions, Expulsions)" |
+#     Time_Education_Questions$Subcategory == "School Discipline (including Expulsion and Suspension)", 
+#   "School Discipline",  
+#   Time_Education_Questions$Subcategory
+#   )
+# 
+# Edu_Subcats <- Time_Education_Questions %>%
+#   group_by(MonthAsked) %>%
+#   count(Subcategory)
+# 
+# g4 <- ggplot(Edu_Subcats, aes(x = MonthAsked, y = n)) +
+#   geom_col(aes(fill = MonthAsked)) +
+#   facet_wrap(~Subcategory)
+# 
+# g4
+```
+
+::: notes
+-   Introduce graph: Subcategories over 12 months
+
+-   School discipline starts to rise when school returns, peaks Oct
+
+-   1 in 4 education forum posts discuss suspension/expulsion
+
+-   Lawyers should anticipate and prepare for suspension / expulsion policies
+:::
+
+# Consequences
+
+## Sentiment analysis of education queries
+
+```{r}
+educationposts <- questions %>%
+  left_join(questionposts, by = "QuestionUno") %>%
+  select(QuestionUno, PostText, AskedOnUtc, Category) %>%
+  filter(Category == "Education") %>%
+  mutate(Month = month(AskedOnUtc, label = TRUE))
+
+tidy_eduposts <- educationposts %>%
+  unnest_tokens(word, PostText)
+
+cleaned_eduposts <- tidy_eduposts %>%
+  anti_join(get_stopwords()) %>%
+  arrange(by_group = Month)
+
+bing <- get_sentiments("bing")
+
+edu_sentiment <- cleaned_eduposts %>%
+  inner_join(bing) %>%
+  count(Month, sentiment) %>%
+  spread(sentiment, n, fill = 0) %>%
+  mutate(sentiment = positive - negative) %>%
+  ggplot(aes(Month, sentiment)) +
+  geom_bar(aes(fill = Month), stat = "identity", show.legend = FALSE)
+
+edu_sentiment
+```
+
+::: notes
+-   Introduce graph: Sentiment analysis of discussions on education
+
+-   Downward trend as year progresses
+
+-   not being appropriately managed early on, leading to neg attitude
+:::
+
+# Conclusion
+
+## Recommendation
+
+**1. Recruit those with expertise in education shortly before back to school season**
+
+-   This will enable a better response to the case surge in this period
+
+-   Handling that early on will temper increased wait times in several categories
+
+**2. Provide guide materials on Suspension & Expulsion policies**
+
+-   This will decrease closure time in the subcategory of education with the strongest surge
